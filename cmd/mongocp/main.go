@@ -1,4 +1,4 @@
-package mongocp
+package main
 
 import (
 	"log/slog"
