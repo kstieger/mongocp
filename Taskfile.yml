@@ -48,17 +48,23 @@ tasks:
     cmds:
       - go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
+  secretleakcheck:
+    desc: Scan the repo (working tree + git history) for leaked secrets
+    cmds:
+      - go run github.com/zricethezav/gitleaks/v8@v8.30.1 detect --source . --redact --no-banner
+
   test:
     desc: Run the full test suite
     cmds:
       - go test -v -race -coverprofile=coverage.out ./...
 
   pre-checkin:
-    desc: Run formatting, linting, vulnerability scanning, and tests before committing
+    desc: Run formatting, linting, vulnerability scanning, secret scanning, and tests before committing
     cmds:
       - task: format
       - task: lint
       - task: vulncheck
+      - task: secretleakcheck
       - task: test
 
   release:
