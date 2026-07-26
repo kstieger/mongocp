@@ -1,0 +1,113 @@
+version: '3'
+
+vars:
+  BINARY_NAME: mongocp
+  BINARY_PATH: bin/{{.BINARY_NAME}}
+  GO_MAIN: ./cmd/mongocp
+  DIST_DIR: dist
+  REMOTE_NAME: origin
+  TAG: '{{default "" .TAG}}'
+  VERSION:
+    sh: git describe --tags --always --dirty
+  BUILTAT:
+    sh: date -u '+%Y-%m-%d_%H:%M:%S'
+  GITHASH:
+    sh: git rev-parse HEAD
+  LDFLAGS: -w -s -X github.com/kstieger/mongocp/internal/app.Version={{.VERSION}} -X github.com/kstieger/mongocp/internal/app.BuiltAt={{.BUILTAT}} -X github.com/kstieger/mongocp/internal/app.GitHash={{.GITHASH}}
+
+tasks:
+  build:
+    desc: Cross-compile the mongocp binary for linux/darwin/windows (amd64+arm64)
+    cmds:
+      - |
+        set -euo pipefail
+        targets=("linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64" "windows arm64")
+        for target in "${targets[@]}"; do
+          read -r os arch <<< "$target"
+          ext=""
+          [ "$os" = "windows" ] && ext=".exe"
+          outdir="{{.DIST_DIR}}/${os}-${arch}"
+          mkdir -p "$outdir"
+          echo "building ${os}/${arch}..."
+          CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "${outdir}/{{.BINARY_NAME}}${ext}" -ldflags "{{.LDFLAGS}}" {{.GO_MAIN}}
+        done
+
+  format:
+    desc: Format Go code and tidy modules
+    cmds:
+      - go fmt ./...
+      - go mod tidy
+
+  lint:
+    desc: Run golangci-lint with the repo configuration
+    cmds:
+      - golangci-lint run ./...
+
+  vulncheck:
+    desc: Scan dependencies and code paths for known vulnerabilities
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+  test:
+    desc: Run the full test suite
+    cmds:
+      - go test -v -race -coverprofile=coverage.out ./...
+
+  pre-checkin:
+    desc: Run formatting, linting, vulnerability scanning, and tests before committing
+    cmds:
+      - task: format
+      - task: lint
+      - task: vulncheck
+      - task: test
+
+  release:
+    desc: Validate main, create or reuse a tag, and push it — CI builds the binaries and publishes the GitHub Release
+    deps:
+      - pre-checkin
+    cmds:
+      - |
+        current_branch=$(git branch --show-current)
+        if [[ "$current_branch" != "main" ]]; then
+          echo "release requires the current branch to be main" >&2
+          exit 1
+        fi
+
+        if [[ -n "$(git status --porcelain)" ]]; then
+          echo "release requires a clean working tree" >&2
+          exit 1
+        fi
+
+        git remote get-url {{.REMOTE_NAME}} >/dev/null 2>&1
+        git fetch {{.REMOTE_NAME}} --tags
+
+        requested_tag='{{.TAG}}'
+        if [[ -n "$requested_tag" ]]; then
+          next_tag="$requested_tag"
+        else
+          latest_tag=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          if [[ -z "$latest_tag" ]]; then
+            next_tag=v0.1.0
+          else
+            version=${latest_tag#v}
+            IFS=. read -r major minor patch _extra <<< "$version"
+            if [[ -z "$major" || -z "$minor" ]]; then
+              echo "latest tag '$latest_tag' is not a supported semantic version" >&2
+              exit 1
+            fi
+            if [[ -z "$patch" ]]; then
+              patch=0
+            fi
+            next_tag=v${major}.${minor}.$((patch + 1))
+          fi
+        fi
+
+        if ! git rev-parse "$next_tag" >/dev/null 2>&1; then
+          git tag -a "$next_tag" -m "Release $next_tag"
+        fi
+
+        if ! git ls-remote --tags {{.REMOTE_NAME}} "$next_tag" | grep -q "$next_tag"; then
+          git push {{.REMOTE_NAME}} "$next_tag"
+        fi
+
+        echo "pushed tag $next_tag — GitHub Actions will build the binaries and publish the release"

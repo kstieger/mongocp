@@ -1,5 +1,9 @@
 # mongocp
 
+[![CI](https://github.com/kstieger/mongocp/workflows/CI/badge.svg)](https://github.com/kstieger/mongocp/actions)
+[![golangci-lint](https://img.shields.io/badge/linted%20with-golangci--lint-brightgreen.svg)](https://golangci-lint.run/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 `mongocp` is a fast CLI tool for copying MongoDB databases and collections from one server to another.
 
 It is designed for migration and replication workflows where you want filtering, dry-run safety, and clear progress visibility per worker.
@@ -76,42 +80,44 @@ mongocp \
 - `-dry-run`: preview copy operations without writing data.
 - `-log-level`: logging level (`info`, `debug`, `warn`, `error`); disables progress mode when set.
 - `-loglevel`: alias for `-log-level`.
+- `-version`: print version information and exit.
 
 ## Releases
 
-GitHub Releases include prebuilt binaries for:
+Pushing a `v*` tag (via `task release`) triggers the `Release` GitHub Actions workflow, which cross-compiles and publishes prebuilt binaries as GitHub Release assets for:
 
 - Linux: `amd64`, `arm64`
 - macOS (Darwin): `amd64`, `arm64`
 - Windows: `amd64`, `arm64`
 
-## Development
+## Contributing
 
-### Build
+Contributions are welcome! To get started:
 
-```bash
-go build -o out/mongocp ./cmd/mongocp
-```
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-### Test
+### Local Tasks
 
-```bash
-go test ./...
-```
-
-### Lint
+This project uses [Task](https://taskfile.dev/) to run common developer commands:
 
 ```bash
-golangci-lint run
+task build        # cross-compile for linux/darwin/windows (amd64+arm64)
+task format       # gofmt + go mod tidy
+task lint         # golangci-lint
+task vulncheck    # govulncheck
+task test         # go test -race with coverage
+task pre-checkin  # format, lint, vulncheck, and test
+task release      # tag and push a release; CI builds the binaries and publishes the GitHub Release
 ```
 
 ## Security Before Push
 
 Before committing and pushing:
 
-1. Run tests and lint:
-   - `go test ./...`
-   - `golangci-lint run`
+1. Run `task pre-checkin` (formatting, linting, vulnerability scanning, and tests).
 2. Scan for secrets (for example with `gitleaks detect`).
 3. Verify docs/examples do not include real credentials, tokens, or private keys.
 

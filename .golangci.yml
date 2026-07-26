@@ -11,11 +11,23 @@ linters:
     - govet
     - ineffassign
     - staticcheck
+    - unused
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
 
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/kstieger/mongocp
 
 issues:
   max-issues-per-linter: 0

@@ -3,16 +3,23 @@ package app
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
+)
+
+var (
+	Version = "dev"
+	BuiltAt = "unknown"
+	GitHash = "unknown"
 )
 
 // Run is the main entry point for the CLI using Go stdlib flag package.
 func Run() error {
 	var srcURI, dstURI, includeDbsStr, excludeDbsStr, logLevel string
 	var workerCount int
-	var dryRun, excludeSystem bool
+	var dryRun, excludeSystem, showVersion bool
 
 	flag.StringVar(&srcURI, "src", "", "Source MongoDB URI")
 	flag.StringVar(&dstURI, "dst", "", "Destination MongoDB URI")
@@ -23,8 +30,14 @@ func Run() error {
 	flag.BoolVar(&excludeSystem, "exclude-system_dbs", true, "Exclude system databases (admin, local, config)")
 	flag.StringVar(&logLevel, "log-level", "info", "Set log level (info, debug, warn, error)")
 	flag.StringVar(&logLevel, "loglevel", "info", "Alias for -log-level")
+	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
 
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("mongocp, version %s\nbuilt at %s\ngit hash %s\n", Version, BuiltAt, GitHash)
+		return nil
+	}
 
 	if srcURI == "" || dstURI == "" {
 		flag.Usage()

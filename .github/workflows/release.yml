@@ -3,83 +3,53 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  release:
+    name: Build and publish release binaries
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            ext: tar.gz
-          - goos: linux
-            goarch: arm64
-            ext: tar.gz
-          - goos: darwin
-            goarch: amd64
-            ext: tar.gz
-          - goos: darwin
-            goarch: arm64
-            ext: tar.gz
-          - goos: windows
-            goarch: amd64
-            ext: zip
-          - goos: windows
-            goarch: arm64
-            ext: zip
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Check out code
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.26'
+        cache-dependency-path: go.sum
 
-      - name: Download dependencies
-        run: go mod download
+    - name: Cross-compile binaries
+      run: |
+        set -euo pipefail
+        VERSION="${GITHUB_REF_NAME}"
+        BUILTAT="$(date -u '+%Y-%m-%d_%H:%M:%S')"
+        GITHASH="$(git rev-parse HEAD)"
+        LDFLAGS="-w -s -X github.com/kstieger/mongocp/internal/app.Version=${VERSION} -X github.com/kstieger/mongocp/internal/app.BuiltAt=${BUILTAT} -X github.com/kstieger/mongocp/internal/app.GitHash=${GITHASH}"
 
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p dist
-          BIN_NAME=mongocp
-          if [ "${GOOS}" = "windows" ]; then
-            BIN_NAME=mongocp.exe
-          fi
-          go build -trimpath -ldflags "-s -w" -o "dist/${BIN_NAME}" ./cmd/mongocp
+        mkdir -p dist
+        targets=("linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64" "windows arm64")
+        for target in "${targets[@]}"; do
+          read -r os arch <<< "$target"
+          ext=""
+          [ "$os" = "windows" ] && ext=".exe"
+          out="dist/mongocp-${os}-${arch}${ext}"
+          echo "building ${os}/${arch}..."
+          CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "$out" -ldflags "$LDFLAGS" ./cmd/mongocp
+        done
 
-      - name: Package artifact
-        env:
-          VERSION: ${{ github.ref_name }}
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          EXT: ${{ matrix.ext }}
-        run: |
-          PKG_BASE="mongocp_${VERSION}_${GOOS}_${GOARCH}"
-          mkdir -p package
-          if [ "${GOOS}" = "windows" ]; then
-            cp dist/mongocp.exe package/
-            cp README.md LICENSE package/
-            (cd package && zip -q "../dist/${PKG_BASE}.zip" mongocp.exe README.md LICENSE)
-            echo "ASSET=dist/${PKG_BASE}.zip" >> "$GITHUB_ENV"
-          else
-            cp dist/mongocp package/
-            cp README.md LICENSE package/
-            tar -C package -czf "dist/${PKG_BASE}.tar.gz" mongocp README.md LICENSE
-            echo "ASSET=dist/${PKG_BASE}.tar.gz" >> "$GITHUB_ENV"
-          fi
-
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ env.ASSET }}
+    - name: Publish GitHub Release with binaries
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release create "${GITHUB_REF_NAME}" \
+          --verify-tag \
+          --generate-notes \
+          --title "${GITHUB_REF_NAME}" \
+          dist/*
